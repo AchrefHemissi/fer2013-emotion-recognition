@@ -1,0 +1,49 @@
+# Dataset
+data/
+
+# Checkpoints and outputs
+checkpoints/
+logs/
+results/
+*.pth
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.Python
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Kaggle credentials
+kaggle.json
+*.json
+
+# Logs
+*.log
+*.csv
+
+# Screenshots
+screenshot_*.png
