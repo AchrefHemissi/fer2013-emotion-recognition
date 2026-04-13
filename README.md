@@ -1,115 +1,169 @@
-# CR2 — Image Preprocessing for FER2013
+# FER2013 — Facial Emotion Recognition
 
-INSAT GL4 — Image Processing — Week 2 (06/04/2026)
+INSAT GL4 — Image Processing Project (2026)
 
 Group: Rayen Chemlali, Mohamed Dhia Medini, Khalil Ghimaji, Mohamed Achref Hemissi
 
 ---
 
-## Project Overview
+## Project Roadmap
 
-This report covers the complete image preprocessing pipeline applied to the **FER2013** dataset for automatic facial emotion recognition.
-The pipeline prepares raw images before any model training by cleaning, enhancing, and normalizing the data.
+| Week | Date       | Topic                                                    | Deliverable        | Status      |
+| ---- | ---------- | -------------------------------------------------------- | ------------------ | ----------- |
+| 1    | 30/03/2026 | Project framing — problem, objectives, dataset selection | CR1 (PDF)          | Done        |
+| 2    | 06/04/2026 | Image preprocessing pipeline                             | CR2 (notebook+PDF) | Done        |
+| 3    | 13/04/2026 | Model design — architecture choice, global pipeline      | CR3                | In progress |
 
 ---
 
-## Dataset — FER2013
+## Week 1 — Project Framing
+
+Objective: Automatically classify facial expressions into 7 emotion categories from grayscale images.
+
+### Dataset — FER2013
 
 | Property | Value |
 | --- | --- |
-| Total images | 35,887 |
-| Image format | Grayscale, 48×48 pixels |
-| Classes | 7 emotions |
+| Total | 35,887 images |
+| Format | Grayscale, 48×48 pixels |
+| Classes | 7 emotions (Angry, Disgust, Fear, Happy, Sad, Surprise, Neutral) |
 | Source | Kaggle — `msambare/fer2013` |
+| Structure | `train/` and `test/` folders, one sub-folder per class |
 
-### Class Distribution (verified results)
+Critical observation: severe class imbalance — Disgust (547 samples) vs Happy (8,989 samples), ratio 1:16.
+This must be compensated during training via class weights or oversampling.
 
-| Class | Count | Percentage |
-| --- | --- | --- |
-| Angry | 4,953 | 13.8% |
-| Disgust | 547 | 1.5% |
-| Fear | 5,121 | 14.3% |
-| Happy | 8,989 | 25.0% |
-| Sad | 6,077 | 16.9% |
-| Surprise | 4,002 | 11.2% |
-| Neutral | 6,198 | 17.3% |
-
-**Critical imbalance:** Disgust (547) vs Happy (8,989) — ratio 1:16.
-This will require class weights when training models (handled in later weeks).
-
-### Integrity Check Results
-
-| Metric | Result |
-| --- | --- |
-| Total images | 35,887 |
-| Valid | 35,887 (100%) |
-| Corrupted | 0 |
-| Duplicates (MD5) | 1,853 |
-
-No corrupted images were found. 1,853 duplicate images were detected via MD5 hashing — these are kept since they are part of the original dataset distribution.
+Full problem statement: [docs/Compte-Rendu-1.pdf](docs/Compte-Rendu-1.pdf)
 
 ---
 
-## Preprocessing Pipeline
+## Week 2 — Preprocessing Pipeline
 
-### Step 1 — Data Cleaning
+Full report and illustrations: [docs/Compte-Rendu-2.pdf](docs/Compte-Rendu-2.pdf)
 
-Performed via `verify_dataset()` in `src/preprocessing.py`:
+Executable notebook: [notebooks/cr2_preprocessing.ipynb](notebooks/cr2_preprocessing.ipynb)
 
-- Iterates over all images in `train/` and `test/` folders
-- Detects corrupted files (unreadable images)
-- Detects invalid labels (outside 0–6 range)
-- Detects exact duplicates using **MD5 hashing** of pixel arrays
-
-```bash
-python src/preprocessing.py --verify data/fer2013/archive
-```
-
-### Step 2 — Resizing
-
-All FER2013 images are standardized to **48×48 pixels** (grayscale).
-This is already the native format of FER2013, so no resizing is applied.
-The notebook illustrates the impact of different resolutions to justify this choice.
-
-### Step 3a — Gaussian Denoising
-
-Applied via `denoise_gaussian()`:
-
-```python
-cv2.GaussianBlur(img, ksize=(3, 3), sigmaX=0.8)
-```
-
-- **Kernel:** 3×3
-- **Sigma (σ):** 0.8
-- **Effect:** Reduces high-frequency noise while preserving facial edges
-- The difference map (amplified ×4) shows the removed noise is minimal and uniform
-
-### Step 3b — CLAHE (Contrast Enhancement)
-
-Applied via `apply_clahe()`:
-
-```python
-clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(4, 4))
-clahe.apply(img)
-```
-
-- **clipLimit:** 2.0 — limits contrast amplification to avoid noise boost
-- **tileGridSize:** (4, 4) — divides the 48×48 image into 16 local regions
-- **Effect:** Enhances local contrast, making facial features more distinct
-- Histogram comparison shows better pixel spread after CLAHE
-
-### Step 4 — Normalization
-
-Pixel values are normalized to zero mean and unit variance:
+### Pipeline steps
 
 ```text
-normalized = (pixel / 255.0 - mean) / std
+Raw image (48×48 grayscale)
+        │
+        ▼
+1. Dataset integrity check   ← MD5 duplicates, corrupted files, label validation
+        │
+        ▼
+2. Gaussian denoising        ← kernel (3×3), σ=0.8
+        │
+        ▼
+3. CLAHE                     ← clipLimit=2.0, tileGridSize=(4×4)
+        │
+        ▼
+4. Normalization             ← (pixel/255 − 0.5070) / 0.2553
+        │
+        ▼
+  Preprocessed image → ready for model input
 ```
 
-- **Mean:** 0.5070 (computed on train set only)
-- **Std:** 0.2553 (computed on train set only)
+### Integrity check results
 
-**Important:** statistics are computed **only on the train set** to avoid data leakage into validation/test sets.
+| Metric | Result |
+| --- | --- |
+| Total | 35,887 |
+| Valid | 35,887 (100%) |
+| Corrupted | 0 |
+| MD5 duplicates | 1,853 (kept - part of original distribution) |
+
+### Key parameters (centralized in `configs/config.yaml`)
+
+| Parameter | Value | Justification |
+| --- | --- | --- |
+| Image size | 48x48 | Native FER2013 format - no resizing needed |
+| Gauss kernel | (3, 3) | Preserves edges at small resolution |
+| Gauss sigma | 0.8 | Light denoising, no feature blur |
+| CLAHE clipLimit | 2.0 | Limits noise amplification |
+| CLAHE tileGridSize | (4, 4) | 16 local regions on 48×48 image |
+| Mean (train) | 0.5070 | Computed on train set only — no leakage |
+| Std (train) | 0.2553 | Computed on train set only — no leakage |
+
+### Source files
+
+- [src/preprocessing.py](src/preprocessing.py) — `apply_clahe()`, `denoise_gaussian()`, `verify_dataset()`
+- [src/dataset.py](src/dataset.py) — `FERDataset` class (supports CSV and folder formats, computes class weights)
+
+---
+
+## Week 3 — Model Design (current)
+
+Deliverable CR3: model description + global pipeline diagram.
+
+### What is already in place
+
+The codebase is structured to support model training without breaking Week 2 work:
+
+- `FERDataset.__getitem__` returns `(PIL.Image, label)` — ready to wrap with any torchvision `transforms.Compose`
+- `FERDataset.get_class_weights()` returns balanced weights — plug directly into `torch.nn.CrossEntropyLoss(weight=...)`
+- `configs/config.yaml` already declares three candidate architectures:
+  - `baseline_cnn` — custom lightweight CNN (to be implemented)
+  - `resnet50` — transfer learning from ImageNet
+  - `efficientnet_b0` — transfer learning, better accuracy/size tradeoff
+
+### What needs to be added this week
+
+1. **`src/model.py`** — implement the chosen architecture(s):
+   - Baseline CNN: 3–4 conv blocks → GlobalAvgPool → FC(7)
+   - Transfer learning variant: adapt pretrained backbone (1-channel input, 7-class head)
+
+2. **`src/train.py`** — training loop:
+   - `DataLoader` with `FERDataset` + preprocessing transforms
+   - `CrossEntropyLoss` with class weights
+   - Optimizer (Adam, lr=0.001), scheduler (ReduceLROnPlateau or CosineAnnealing)
+   - Early stopping (patience=10 from config)
+   - Checkpoint saving to `checkpoints/`
+
+3. **`requirements.txt`** — add PyTorch and torchvision (currently missing):
+
+   ```text
+   torch>=2.0.0
+   torchvision>=0.15.0
+   ```
+
+4. **Data augmentation** — apply during training only (already configured in `config.yaml`):
+   - Horizontal flip (p=0.5), rotation ±10°, brightness/contrast jitter, random crop zoom [0.9, 1.1]
+
+### Recommended global pipeline for CR3
+
+```text
+FER2013 dataset
+      │
+      ▼
+FERDataset (src/dataset.py)
+      │  CSV or folder auto-detection
+      │  train / val / test splits
+      ▼
+transforms.Compose (training)          transforms.Compose (val/test)
+  Gaussian denoise                       Gaussian denoise
+  CLAHE                                  CLAHE
+  Random horizontal flip                 Normalize(0.5070, 0.2553)
+  Random rotation ±10°
+  Color jitter
+  ToTensor
+  Normalize(0.5070, 0.2553)
+      │                                        │
+      └──────────────┬──────────────────────────┘
+                     ▼
+              Model (src/model.py)
+              Baseline CNN  or  ResNet50  or  EfficientNet-B0
+              Input: (B, 1, 48, 48)   Output: (B, 7)
+                     │
+                     ▼
+              CrossEntropyLoss + class weights
+                     │
+                     ▼
+              Adam optimizer + LR scheduler + early stopping
+                     │
+                     ▼
+              Evaluation: accuracy, confusion matrix, per-class F1
+```
 
 ---
 
@@ -117,46 +171,53 @@ normalized = (pixel / 255.0 - mean) / std
 
 ```text
 fer_emotions/
+├── configs/
+│   └── config.yaml             ← all hyperparameters (data, training, augmentation, model)
 ├── data/
 │   └── fer2013/archive/
-│       ├── train/          ← training images (per class folders)
-│       └── test/           ← test images (per class folders)
-├── src/
-│   ├── preprocessing.py    ← verify_dataset, apply_clahe, denoise_gaussian
-│   └── dataset.py          ← FERDataset class (loads images from folder or CSV)
+│       ├── train/              ← 28,709 images, 7 class folders
+│       └── test/               ← 7,178 images, 7 class folders
+├── docs/
+│   ├── Compte-Rendu-1.pdf      ← CR1: problem statement, objectives, dataset
+│   └── Compte-Rendu-2.pdf      ← CR2: preprocessing report
 ├── notebooks/
-│   └── cr2_preprocessing.ipynb  ← CR2 deliverable with all illustrations
-├── results/                ← generated figures (after running notebook)
+│   └── cr2_preprocessing.ipynb ← preprocessing illustrations (CR2 deliverable)
+├── results/
 │   ├── cr2_cleaning.png
 │   ├── cr2_resizing.png
 │   ├── cr2_denoising.png
 │   ├── cr2_clahe.png
 │   ├── cr2_full_pipeline.png
 │   └── cr2_normalization.png
-├── configs/
-│   └── config.yaml         ← all parameters centralized
-└── requirements.txt
+├── src/
+│   ├── __init__.py
+│   ├── preprocessing.py        ← apply_clahe, denoise_gaussian, verify_dataset
+│   ├── dataset.py              ← FERDataset (CSV + folder, class weights)
+│   ├── model.py                ← (Week 3) CNN / ResNet / EfficientNet
+│   └── train.py                ← (Week 3) training loop
+├── requirements.txt
+└── README.md
 ```
 
 ---
 
 ## How to Run
 
-### 1. Install dependencies
+### 1. Setup
 
 ```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
 ```
 
-### 2. Verify dataset integrity
+### 2. Verify dataset integrity (Week 2)
 
 ```bash
 python src/preprocessing.py --verify data/fer2013/archive
 ```
 
-### 3. Generate all CR2 illustrations
+### 3. Reproduce CR2 illustrations
 
 ```bash
 jupyter notebook notebooks/cr2_preprocessing.ipynb
@@ -164,43 +225,27 @@ jupyter notebook notebooks/cr2_preprocessing.ipynb
 
 Run all cells in order. Figures are saved to `results/`.
 
----
+### 4. Train a model (Week 3 — coming)
 
-## Configuration
-
-All parameters are centralized in `configs/config.yaml`:
-
-```yaml
-data:
-  root: "data/fer2013/archive"
-  image_size: 48
-  num_classes: 7
-  class_names: ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
+```bash
+python src/train.py --config configs/config.yaml --model baseline_cnn
 ```
-
----
-
-## Key Findings
-
-1. **Dataset is clean** — 0 corrupted images out of 35,887
-2. **Severe class imbalance** — Disgust is 16× less represented than Happy → class weights will be required during training
-3. **1,853 duplicates** exist in the dataset — known characteristic of FER2013, kept intentionally
-4. **CLAHE improves contrast** significantly for dark/underexposed face images
-5. **Gaussian denoising** removes minor noise without blurring facial features at 48×48 resolution
 
 ---
 
 ## Dependencies
 
 ```text
-opencv-python   — CLAHE, Gaussian blur
-numpy           — array operations
-pandas          — CSV loading
-matplotlib      — visualizations
-seaborn         — plots
-scikit-learn    — class weight computation
-Pillow          — image loading
-tqdm            — progress bars
-pyyaml          — config loading
-jupyter         — notebook
+opencv-python>=4.8.0    — CLAHE, Gaussian blur
+numpy>=1.24.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+scikit-learn>=1.3.0     — class weight computation
+Pillow>=9.5.0
+tqdm>=4.65.0
+pyyaml>=6.0
+jupyter>=1.0.0
+torch>=2.0.0            — (Week 3)
+torchvision>=0.15.0     — (Week 3)
 ```

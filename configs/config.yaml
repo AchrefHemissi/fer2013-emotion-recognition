@@ -1,32 +1,40 @@
 data:
-  root: "data/fer2013/archive"
+  root: data/fer2013/archive
   image_size: 48
   num_classes: 7
   num_workers: 4
-  class_names: ["Angry", "Disgust", "Fear", "Happy", "Sad", "Surprise", "Neutral"]
-
+  class_names:
+  - Angry
+  - Disgust
+  - Fear
+  - Happy
+  - Sad
+  - Surprise
+  - Neutral
 training:
   batch_size: 64
   epochs: 50
   learning_rate: 0.001
   weight_decay: 0.0001
-  patience: 10          # Early stopping
-  device: "auto"        # auto, cpu, cuda, mps
-
+  patience: 10
+  device: auto
 augmentation:
   horizontal_flip: 0.5
   rotation_degrees: 10
   brightness: 0.3
   contrast: 0.2
-  zoom_scale: [0.9, 1.1]
+  zoom_scale:
+  - 0.9
+  - 1.1
   gaussian_noise_std: 15
-
 model:
-  name: "baseline_cnn"  # baseline_cnn | resnet50 | efficientnet_b0
+  name: baseline_cnn
   pretrained: true
   dropout: 0.5
-
 paths:
-  checkpoints: "checkpoints/"
-  logs: "logs/"
-  results: "results/"
+  checkpoints: checkpoints/
+  logs: logs/
+  results: results/
+preprocessing:
+  mean: 0.563
+  std: 0.2627
