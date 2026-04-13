@@ -4,7 +4,6 @@ data/
 # Checkpoints and outputs
 checkpoints/
 logs/
-results/
 *.pth
 
 # Python
