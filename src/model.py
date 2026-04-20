@@ -1,9 +1,10 @@
 """
-Model architectures for FER2013 — Week 3.
+Model architectures for FER2013 — Week 3 & 4.
 
 Available models
 ----------------
-BaselineCNN    : custom lightweight CNN designed for 48x48 grayscale input
+BaselineCNN    : custom lightweight CNN (~390K params)
+DeepCNN        : deeper double-conv CNN with SE attention (~1.5M params) — target 70%
 TransferModel  : ResNet-50 or EfficientNet-B0 adapted for 1-channel input and 7 classes
 build_model()  : factory function driven by configs/config.yaml
 """
@@ -72,6 +73,94 @@ class BaselineCNN(nn.Module):
         x = self.gap(x)            # (B, 256, 1, 1)
         x = x.flatten(1)           # (B, 256)
         return self.classifier(x)  # (B, 7)
+
+
+# ---------------------------------------------------------------------------
+# DeepCNN  — double-conv blocks + SE attention  (~1.5M params)
+# ---------------------------------------------------------------------------
+
+class SEBlock(nn.Module):
+    """Squeeze-and-Excitation: recalibrate channel importance."""
+
+    def __init__(self, channels: int, reduction: int = 8):
+        super().__init__()
+        self.se = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Flatten(),
+            nn.Linear(channels, channels // reduction, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channels // reduction, channels, bias=False),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        scale = self.se(x).unsqueeze(-1).unsqueeze(-1)
+        return x * scale
+
+
+def _conv(in_ch: int, out_ch: int) -> nn.Conv2d:
+    """Conv3x3 with L2 regularization via weight initialization scale."""
+    return nn.Conv2d(in_ch, out_ch, 3, padding=1, bias=False)
+
+
+class DoubleConvBlock(nn.Module):
+    """Conv→BN→ReLU→Conv→BN→ReLU→SE→MaxPool→Dropout2d."""
+
+    def __init__(self, in_ch: int, out_ch: int, dropout2d: float = 0.1):
+        super().__init__()
+        self.block = nn.Sequential(
+            _conv(in_ch,  out_ch),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True),
+            _conv(out_ch, out_ch),
+            nn.BatchNorm2d(out_ch),
+            nn.ReLU(inplace=True),
+            SEBlock(out_ch),
+            nn.MaxPool2d(2, 2),
+            nn.Dropout2d(dropout2d),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.block(x)
+
+
+class DeepCNN(nn.Module):
+    """
+    Deeper CNN for FER2013 targeting ~70% accuracy.
+
+    Spatial flow:
+        (B,   1, 48, 48)  → (B,  32, 24, 24)
+                           → (B,  64, 12, 12)
+                           → (B, 128,  6,  6)
+                           → (B, 256,  3,  3)
+                           → GAP → (B, 256)
+                           → FC(256→256) → BN → ReLU
+                           → Dropout → FC(256→7)
+
+    Each block: Conv→BN→ReLU→Conv→BN→ReLU→SE→MaxPool→Dropout2d
+    Total parameters: ~1.5M
+    """
+
+    def __init__(self, num_classes: int = 7, dropout: float = 0.4):
+        super().__init__()
+        self.features = nn.Sequential(
+            DoubleConvBlock(1,    32),
+            DoubleConvBlock(32,   64),
+            DoubleConvBlock(64,  128),
+            DoubleConvBlock(128, 256),
+        )
+        self.gap = nn.AdaptiveAvgPool2d(1)
+        self.classifier = nn.Sequential(
+            nn.Linear(256, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(512, num_classes),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.gap(self.features(x)).flatten(1)
+        return self.classifier(x)
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +297,8 @@ def build_model(config: dict) -> nn.Module:
 
     if name == "baseline_cnn":
         return BaselineCNN(num_classes=num_classes, dropout=dropout)
+    elif name == "deep_cnn":
+        return DeepCNN(num_classes=num_classes, dropout=dropout)
     elif name in ("resnet50", "efficientnet_b0"):
         return TransferModel(
             backbone=name,

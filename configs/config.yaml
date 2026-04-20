@@ -11,30 +11,39 @@ data:
   - Sad
   - Surprise
   - Neutral
+
 training:
-  batch_size: 64
-  epochs: 50
+  batch_size: 128
+  epochs: 100
   learning_rate: 0.001
   weight_decay: 0.0001
-  patience: 10
+  patience: 15
+  label_smoothing: 0.1
+  optimizer: adamw       # adamw | adam
+  scheduler: cosine      # cosine | plateau
   device: auto
+
 augmentation:
   horizontal_flip: 0.5
   rotation_degrees: 10
-  brightness: 0.3
-  contrast: 0.2
+  brightness: 0.2
+  contrast: 0.15
   zoom_scale:
   - 0.9
   - 1.1
   gaussian_noise_std: 15
+
 model:
-  name: baseline_cnn
+  name: deep_cnn         # baseline_cnn | deep_cnn | resnet50 | efficientnet_b0
   pretrained: true
-  dropout: 0.5
+  dropout: 0.4
+
 paths:
   checkpoints: checkpoints/
   logs: logs/
   results: results/
+
 preprocessing:
   mean: 0.563
   std: 0.2627
+  use_custom_transforms: false   # CLAHE + GaussianNoise désactivés
