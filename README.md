@@ -8,11 +8,12 @@ Group: Rayen Chemlali, Mohamed Dhia Medini, Khalil Ghimaji, Mohamed Achref Hemis
 
 ## Project Roadmap
 
-| Week | Date       | Topic                                                    | Deliverable        | Status      |
-| ---- | ---------- | -------------------------------------------------------- | ------------------ | ----------- |
-| 1    | 30/03/2026 | Project framing — problem, objectives, dataset selection | CR1 (PDF)          | Done        |
-| 2    | 06/04/2026 | Image preprocessing pipeline                             | CR2 (notebook+PDF) | Done        |
-| 3    | 13/04/2026 | Model design — architecture choice, global pipeline      | CR3                | In progress |
+| Week | Date       | Topic                                                    | Deliverable        | Status |
+| ---- | ---------- | -------------------------------------------------------- | ------------------ | ------ |
+| 1    | 30/03/2026 | Project framing — problem, objectives, dataset selection | CR1 (PDF)          | Done   |
+| 2    | 06/04/2026 | Image preprocessing pipeline                             | CR2 (notebook+PDF) | Done   |
+| 3    | 13/04/2026 | Model design — architecture choice, global pipeline      | CR3 (notebook+PDF) | Done   |
+| 4    | 20/04/2026 | Model training — 3 architectures benchmark               | CR4 (notebook+PDF) | Done   |
 
 ---
 
@@ -31,7 +32,7 @@ Objective: Automatically classify facial expressions into 7 emotion categories f
 | Structure | `train/` and `test/` folders, one sub-folder per class |
 
 Critical observation: severe class imbalance — Disgust (547 samples) vs Happy (8,989 samples), ratio 1:16.
-This must be compensated during training via class weights or oversampling.
+This is compensated during training via class weights in `CrossEntropyLoss`.
 
 Full problem statement: [docs/Compte-Rendu-1.pdf](docs/Compte-Rendu-1.pdf)
 
@@ -88,82 +89,69 @@ Raw image (48×48 grayscale)
 ### Source files
 
 - [src/preprocessing.py](src/preprocessing.py) — `apply_clahe()`, `denoise_gaussian()`, `verify_dataset()`
-- [src/dataset.py](src/dataset.py) — `FERDataset` class (supports CSV and folder formats, computes class weights)
+- [src/dataset.py](src/dataset.py) — `FERDataset` class (folder format, class weights)
 
 ---
 
-## Week 3 — Model Design (current)
+## Week 3 — Model Design
 
-Deliverable CR3: model description + global pipeline diagram.
+Full report: [docs/Compte-Rendu-3.pdf](docs/Compte-Rendu-3.pdf)
 
-### What is already in place
+Notebook: [notebooks/cr3_model_design.ipynb](notebooks/cr3_model_design.ipynb)
 
-The codebase is structured to support model training without breaking Week 2 work:
+Three architectures implemented in [src/model.py](src/model.py):
 
-- `FERDataset.__getitem__` returns `(PIL.Image, label)` — ready to wrap with any torchvision `transforms.Compose`
-- `FERDataset.get_class_weights()` returns balanced weights — plug directly into `torch.nn.CrossEntropyLoss(weight=...)`
-- `configs/config.yaml` already declares three candidate architectures:
-  - `baseline_cnn` — custom lightweight CNN (to be implemented)
-  - `resnet50` — transfer learning from ImageNet
-  - `efficientnet_b0` — transfer learning, better accuracy/size tradeoff
+| Model | Params | Description |
+| --- | --- | --- |
+| `baseline_cnn` | ~390K | 4× ConvBlock (Conv→BN→ReLU→MaxPool), GAP, FC(7) |
+| `deep_cnn` | ~1.5M | 4× DoubleConvBlock with SE attention, GAP, FC(256→512→7) |
+| `efficientnet_b0` | ~4M | Pretrained EfficientNet-B0, 1-channel stem, fine-tuned head |
 
-### What needs to be added this week
+---
 
-1. **`src/model.py`** — implement the chosen architecture(s):
-   - Baseline CNN: 3–4 conv blocks → GlobalAvgPool → FC(7)
-   - Transfer learning variant: adapt pretrained backbone (1-channel input, 7-class head)
+## Week 4 — Model Training
 
-2. **`src/train.py`** — training loop:
-   - `DataLoader` with `FERDataset` + preprocessing transforms
-   - `CrossEntropyLoss` with class weights
-   - Optimizer (Adam, lr=0.001), scheduler (ReduceLROnPlateau or CosineAnnealing)
-   - Early stopping (patience=10 from config)
-   - Checkpoint saving to `checkpoints/`
+Full report: [docs/CR4.tex](docs/CR4.tex)
 
-3. **`requirements.txt`** — add PyTorch and torchvision (currently missing):
+Notebook: [notebooks/cr4_training.ipynb](notebooks/cr4_training.ipynb)
 
-   ```text
-   torch>=2.0.0
-   torchvision>=0.15.0
-   ```
+### Training configuration
 
-4. **Data augmentation** — apply during training only (already configured in `config.yaml`):
-   - Horizontal flip (p=0.5), rotation ±10°, brightness/contrast jitter, random crop zoom [0.9, 1.1]
+| Parameter | Value |
+| --- | --- |
+| Optimizer | AdamW (lr=0.001, weight_decay=1e-4) |
+| Scheduler | CosineAnnealingLR (T_max=100, η_min=1e-6) |
+| Loss | CrossEntropyLoss + class weights + label smoothing (0.1) |
+| Batch size | 128 |
+| Max epochs | 100 |
+| Early stopping | patience=15 |
+| Augmentation | HorizontalFlip, Rotation±10°, ColorJitter |
+| Device | CUDA (AMP + cudnn.benchmark) |
 
-### Recommended global pipeline for CR3
+### Results
 
-```text
-FER2013 dataset
-      │
-      ▼
-FERDataset (src/dataset.py)
-      │  CSV or folder auto-detection
-      │  train / val / test splits
-      ▼
-transforms.Compose (training)          transforms.Compose (val/test)
-  Gaussian denoise                       Gaussian denoise
-  CLAHE                                  CLAHE
-  Random horizontal flip                 Normalize(0.5070, 0.2553)
-  Random rotation ±10°
-  Color jitter
-  ToTensor
-  Normalize(0.5070, 0.2553)
-      │                                        │
-      └──────────────┬──────────────────────────┘
-                     ▼
-              Model (src/model.py)
-              Baseline CNN  or  ResNet50  or  EfficientNet-B0
-              Input: (B, 1, 48, 48)   Output: (B, 7)
-                     │
-                     ▼
-              CrossEntropyLoss + class weights
-                     │
-                     ▼
-              Adam optimizer + LR scheduler + early stopping
-                     │
-                     ▼
-              Evaluation: accuracy, confusion matrix, per-class F1
+| Model | Best Val Acc | Epochs | Train Acc @ Best | Overfit Gap |
+| --- | --- | --- | --- | --- |
+| Baseline CNN | 62.47% | 32/46 | 58.86% | −3.61% |
+| **Deep CNN** | **68.32%** | **98/100** | **73.15%** | **+4.83%** |
+| EfficientNet-B0 | 66.94% | 97/100 | 97.51% | +30.57% |
+
+**Best model: Deep CNN** — reaches 68.32% validation accuracy with healthy generalization.
+
+EfficientNet-B0 shows severe overfitting (train 97.5% vs val 66.9%) — ImageNet features are poorly suited to 48×48 grayscale images without backbone freezing.
+
+### Training pipeline
+
+```bash
+# Train any model (set model.name in configs/config.yaml)
+python src/train.py
+
+# Or override directly:
+python src/train.py --model deep_cnn
+# Available: baseline_cnn | deep_cnn | efficientnet_b0
 ```
+
+Checkpoints saved to `checkpoints/<model>_best.pth`. Training history saved to `logs/<model>_history.json`.
 
 ---
 
@@ -172,29 +160,39 @@ transforms.Compose (training)          transforms.Compose (val/test)
 ```text
 fer_emotions/
 ├── configs/
-│   └── config.yaml             ← all hyperparameters (data, training, augmentation, model)
+│   └── config.yaml                   ← all hyperparameters
 ├── data/
 │   └── fer2013/archive/
-│       ├── train/              ← 28,709 images, 7 class folders
-│       └── test/               ← 7,178 images, 7 class folders
+│       ├── train/                    ← 28,709 images, 7 class folders
+│       └── test/                     ← 7,178 images, 7 class folders
+├── checkpoints/
+│   ├── baseline_cnn_best.pth
+│   ├── deep_cnn_best.pth
+│   └── efficientnet_b0_best.pth
 ├── docs/
-│   ├── Compte-Rendu-1.pdf      ← CR1: problem statement, objectives, dataset
-│   └── Compte-Rendu-2.pdf      ← CR2: preprocessing report
+│   ├── Compte-Rendu-1.pdf
+│   ├── Compte-Rendu-2.pdf
+│   ├── Compte-Rendu-3.pdf
+│   └── CR4.tex                       ← CR4 LaTeX report
+├── logs/
+│   ├── baseline_cnn_history.json
+│   ├── deep_cnn_history.json
+│   └── efficientnet_b0_history.json
 ├── notebooks/
-│   └── cr2_preprocessing.ipynb ← preprocessing illustrations (CR2 deliverable)
+│   ├── cr2_preprocessing.ipynb
+│   ├── cr3_model_design.ipynb
+│   ├── cr4_training.ipynb            ← 3-model benchmark
+│   └── build_cr4.py                  ← script to rebuild cr4 notebook
 ├── results/
-│   ├── cr2_cleaning.png
-│   ├── cr2_resizing.png
-│   ├── cr2_denoising.png
-│   ├── cr2_clahe.png
-│   ├── cr2_full_pipeline.png
-│   └── cr2_normalization.png
+│   ├── cr2_*.png
+│   ├── cr3_*.png
+│   └── cr4_*.png                     ← training & evaluation figures
 ├── src/
 │   ├── __init__.py
-│   ├── preprocessing.py        ← apply_clahe, denoise_gaussian, verify_dataset
-│   ├── dataset.py              ← FERDataset (CSV + folder, class weights)
-│   ├── model.py                ← (Week 3) CNN / ResNet / EfficientNet
-│   └── train.py                ← (Week 3) training loop
+│   ├── preprocessing.py
+│   ├── dataset.py
+│   ├── model.py                      ← BaselineCNN, DeepCNN, TransferModel
+│   └── train.py                      ← training loop (AMP, early stopping)
 ├── requirements.txt
 └── README.md
 ```
@@ -211,24 +209,30 @@ source .venv/bin/activate
 uv pip install -r requirements.txt
 ```
 
-### 2. Verify dataset integrity (Week 2)
+### 2. Verify dataset integrity
 
 ```bash
 python src/preprocessing.py --verify data/fer2013/archive
 ```
 
-### 3. Reproduce CR2 illustrations
+### 3. Train a model
 
 ```bash
-jupyter notebook notebooks/cr2_preprocessing.ipynb
+python src/train.py --model deep_cnn
 ```
 
-Run all cells in order. Figures are saved to `results/`.
-
-### 4. Train a model (Week 3 — coming)
+### 4. Run the CR4 comparison notebook
 
 ```bash
-python src/train.py --config configs/config.yaml --model baseline_cnn
+jupyter notebook notebooks/cr4_training.ipynb
+# Kernel → Restart & Run All
+```
+
+### 5. Compile the LaTeX report
+
+```bash
+cd docs
+pdflatex CR4.tex && pdflatex CR4.tex
 ```
 
 ---
@@ -236,16 +240,16 @@ python src/train.py --config configs/config.yaml --model baseline_cnn
 ## Dependencies
 
 ```text
-opencv-python>=4.8.0    — CLAHE, Gaussian blur
+opencv-python>=4.8.0
 numpy>=1.24.0
 pandas>=2.0.0
 matplotlib>=3.7.0
 seaborn>=0.12.0
-scikit-learn>=1.3.0     — class weight computation
+scikit-learn>=1.3.0
 Pillow>=9.5.0
 tqdm>=4.65.0
 pyyaml>=6.0
 jupyter>=1.0.0
-torch>=2.0.0            — (Week 3)
-torchvision>=0.15.0     — (Week 3)
+torch>=2.0.0
+torchvision>=0.15.0
 ```
