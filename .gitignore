@@ -1,10 +1,10 @@
 # Dataset
 data/
 
-# Checkpoints and outputs
-checkpoints/
+# Checkpoints and outputs — only best Deep CNN weight is tracked
+checkpoints/*.pth
+!checkpoints/deep_cnn_best.pth
 logs/
-*.pth
 
 # Python
 __pycache__/
