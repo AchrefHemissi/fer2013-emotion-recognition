@@ -14,6 +14,7 @@ Group: Rayen Chemlali, Mohamed Dhia Medini, Khalil Ghimaji, Mohamed Achref Hemis
 | 2    | 06/04/2026 | Image preprocessing pipeline                             | CR2 (notebook+PDF) | Done   |
 | 3    | 13/04/2026 | Model design — architecture choice, global pipeline      | CR3 (notebook+PDF) | Done   |
 | 4    | 20/04/2026 | Model training — 3 architectures benchmark               | CR4 (notebook+PDF) | Done   |
+| 5    | 27/04/2026 | Evaluation — test metrics, confusion matrices, new data  | CR5 (notebook+PDF) | Done   |
 
 ---
 
@@ -59,7 +60,7 @@ Raw image (48×48 grayscale)
 3. CLAHE                     ← clipLimit=2.0, tileGridSize=(4×4)
         │
         ▼
-4. Normalization             ← (pixel/255 − 0.5070) / 0.2553
+4. Normalization             ← (pixel/255 − 0.5630) / 0.2627
         │
         ▼
   Preprocessed image → ready for model input
@@ -83,8 +84,8 @@ Raw image (48×48 grayscale)
 | Gauss sigma | 0.8 | Light denoising, no feature blur |
 | CLAHE clipLimit | 2.0 | Limits noise amplification |
 | CLAHE tileGridSize | (4, 4) | 16 local regions on 48×48 image |
-| Mean (train) | 0.5070 | Computed on train set only — no leakage |
-| Std (train) | 0.2553 | Computed on train set only — no leakage |
+| Mean (train, post-CLAHE) | 0.5630 | Computed after CLAHE — corrected in CR3 |
+| Std (train, post-CLAHE) | 0.2627 | Computed after CLAHE — corrected in CR3 |
 
 ### Source files
 
@@ -97,21 +98,21 @@ Raw image (48×48 grayscale)
 
 Full report: [docs/Compte-Rendu-3.pdf](docs/Compte-Rendu-3.pdf)
 
-Notebook: [notebooks/cr3_model_design.ipynb](notebooks/cr3_model_design.ipynb)
+Notebook: [notebooks/cr3_model.ipynb](notebooks/cr3_model.ipynb)
 
 Three architectures implemented in [src/model.py](src/model.py):
 
 | Model | Params | Description |
 | --- | --- | --- |
 | `baseline_cnn` | ~390K | 4× ConvBlock (Conv→BN→ReLU→MaxPool), GAP, FC(7) |
-| `deep_cnn` | ~1.5M | 4× DoubleConvBlock with SE attention, GAP, FC(256→512→7) |
+| `deep_cnn` | ~1.33M | 4× DoubleConvBlock with SE attention, GAP, FC(256→512→7) |
 | `efficientnet_b0` | ~4M | Pretrained EfficientNet-B0, 1-channel stem, fine-tuned head |
 
 ---
 
 ## Week 4 — Model Training
 
-Full report: [docs/CR4.tex](docs/CR4.tex)
+Full report: [docs/Compte-Rendu-4.pdf](docs/Compte-Rendu-4.pdf)
 
 Notebook: [notebooks/cr4_training.ipynb](notebooks/cr4_training.ipynb)
 
@@ -155,6 +156,45 @@ Checkpoints saved to `checkpoints/<model>_best.pth`. Training history saved to `
 
 ---
 
+## Week 5 — Evaluation
+
+Full report: [docs/Compte-Rendu-5.pdf](docs/Compte-Rendu-5.pdf)
+
+Notebook: [notebooks/cr5_evaluation.ipynb](notebooks/cr5_evaluation.ipynb)
+
+Full evaluation of all three trained models on the 7,178-image test set, plus inference on external images.
+
+### Test set results
+
+| Model | Accuracy | F1 (macro) | F1 (weighted) |
+| --- | --- | --- | --- |
+| Baseline CNN | 56.09% | 51.89% | 56.84% |
+| **Deep CNN** | **65.19%** | **62.35%** | **65.07%** |
+| EfficientNet-B0 | 61.67% | 60.40% | 61.48% |
+| Ensemble (softmax avg) | 66.41% | 63.98% | 66.33% |
+
+> Note: week 4 reported **validation** accuracy during training (Deep CNN 68.32%). The figures above are **test set** accuracy — a different split, evaluated cold.
+
+### Per-class performance (Deep CNN)
+
+| Emotion | Precision | Recall | F1 |
+| --- | --- | --- | --- |
+| Angry | 0.57 | 0.58 | 0.58 |
+| Disgust | 0.44 | 0.72 | 0.54 |
+| Fear | 0.51 | 0.43 | 0.47 |
+| Happy | 0.85 | 0.86 | 0.86 |
+| Sad | 0.52 | 0.56 | 0.54 |
+| Surprise | 0.79 | 0.78 | 0.79 |
+| Neutral | 0.61 | 0.59 | 0.60 |
+
+Happy and Surprise are the most reliably detected emotions. Fear→Sad is the most common confusion pair (21% of Fear images misclassified as Sad).
+
+### External image test (7 images, Deep CNN)
+
+4/7 correct (Angry, Happy, Neutral, Surprise correctly predicted). Disgust, Fear, and Sad were misclassified — consistent with the low recall of those classes on the full test set.
+
+---
+
 ## Project Structure
 
 ```text
@@ -164,7 +204,8 @@ fer_emotions/
 ├── data/
 │   └── fer2013/archive/
 │       ├── train/                    ← 28,709 images, 7 class folders
-│       └── test/                     ← 7,178 images, 7 class folders
+│       ├── test/                     ← 7,178 images, 7 class folders
+│       └── new_images/               ← external test images (1 per emotion)
 ├── checkpoints/
 │   ├── baseline_cnn_best.pth
 │   ├── deep_cnn_best.pth
@@ -173,26 +214,31 @@ fer_emotions/
 │   ├── Compte-Rendu-1.pdf
 │   ├── Compte-Rendu-2.pdf
 │   ├── Compte-Rendu-3.pdf
-│   └── CR4.tex                       ← CR4 LaTeX report
+│   ├── Compte-Rendu-4.pdf
+│   └── Compte-Rendu-5.pdf
 ├── logs/
 │   ├── baseline_cnn_history.json
 │   ├── deep_cnn_history.json
 │   └── efficientnet_b0_history.json
 ├── notebooks/
 │   ├── cr2_preprocessing.ipynb
-│   ├── cr3_model_design.ipynb
+│   ├── cr3_model.ipynb
 │   ├── cr4_training.ipynb            ← 3-model benchmark
+│   ├── cr5_evaluation.ipynb          ← full test evaluation + new data
 │   └── build_cr4.py                  ← script to rebuild cr4 notebook
 ├── results/
 │   ├── cr2_*.png
 │   ├── cr3_*.png
-│   └── cr4_*.png                     ← training & evaluation figures
+│   ├── cr4_*.png                     ← training figures
+│   └── cr5_*.png                     ← evaluation figures
 ├── src/
 │   ├── __init__.py
 │   ├── preprocessing.py
 │   ├── dataset.py
 │   ├── model.py                      ← BaselineCNN, DeepCNN, TransferModel
-│   └── train.py                      ← training loop (AMP, early stopping)
+│   ├── train.py                      ← training loop (AMP, early stopping)
+│   ├── predict_images.py             ← batch inference on image folders
+│   └── demo_webcam.py                ← real-time webcam demo
 ├── requirements.txt
 └── README.md
 ```
@@ -228,11 +274,25 @@ jupyter notebook notebooks/cr4_training.ipynb
 # Kernel → Restart & Run All
 ```
 
-### 5. Compile the LaTeX report
+### 5. Run the CR5 evaluation notebook
 
 ```bash
-cd docs
-pdflatex CR4.tex && pdflatex CR4.tex
+jupyter notebook notebooks/cr5_evaluation.ipynb
+# Kernel → Restart & Run All
+# Requires checkpoints/ to contain the 3 trained .pth files
+```
+
+### 6. Run inference on new images
+
+```bash
+# Place images in data/new_images/ named <emotion>_<n>.jpg
+python src/predict_images.py --model deep_cnn --input data/new_images/
+```
+
+### 7. Webcam demo
+
+```bash
+python src/demo_webcam.py --model deep_cnn
 ```
 
 ---
