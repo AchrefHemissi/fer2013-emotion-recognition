@@ -137,9 +137,11 @@ Notebook: [notebooks/cr4_training.ipynb](notebooks/cr4_training.ipynb)
 | **Deep CNN** | **68.32%** | **98/100** | **73.15%** | **+4.83%** |
 | EfficientNet-B0 | 66.94% | 97/100 | 97.51% | +30.57% |
 
-**Best model: Deep CNN** — reaches 68.32% validation accuracy with healthy generalization.
+**Best model: Deep CNN** — 68.32% validation accuracy, only +4.83% train/val gap. Reliable generalisation to new data.
 
 EfficientNet-B0 shows severe overfitting (train 97.5% vs val 66.9%) — ImageNet features are poorly suited to 48×48 grayscale images without backbone freezing.
+
+The ensemble (softmax average of all 3) does achieve a higher test accuracy (66.41% vs 65.19%), and that result is correct. However we chose **not** to use it in production: EfficientNet-B0's overfit means its softmax outputs are overconfident and poorly calibrated on unseen data. The +1.23% gain observed on the test set is not a reliable signal — it may not hold on real-world images. Deep CNN alone is the safer and more honest deployment choice.
 
 ### Training pipeline
 
@@ -195,6 +197,39 @@ Happy and Surprise are the most reliably detected emotions. Fear→Sad is the mo
 
 ---
 
+## Streamlit Web App
+
+Interactive demo running the Deep CNN model locally.
+
+```bash
+streamlit run app.py
+# Opens at http://localhost:8501
+```
+
+### Features
+
+| Feature | Details |
+| --- | --- |
+| Upload Image | JPG, PNG, BMP, WEBP — predict emotion on any face photo |
+| Capture Photo | Webcam snapshot directly from the browser |
+| Auto face detection | Haar cascade crops the largest face before inference |
+| Confidence chart | Horizontal bar chart for all 7 emotion probabilities |
+| Top-3 display | Shows the 3 most likely emotions with scores |
+| Preprocessing view | Toggle to visualise raw → denoised → CLAHE → normalized |
+| Uncertainty warning | Banner shown when max confidence < 45% |
+
+### Model used
+
+Deep CNN — chosen over the ensemble because EfficientNet-B0 (one of the three ensemble members) is heavily overfit (train 97.5% vs test 61.7%), making its softmax outputs unreliable on new data. The ensemble's +1.23% test gain is not trustworthy in production. Deep CNN alone has a healthy train/val gap (+4.83%) and generalises correctly.
+
+### Notes
+
+- Best results on front-facing, well-lit, single-face images
+- The model expects 48×48 grayscale — face detection handles the crop automatically
+- Requires `checkpoints/deep_cnn_best.pth` to be present
+
+---
+
 ## Project Structure
 
 ```text
@@ -239,6 +274,7 @@ fer_emotions/
 │   ├── train.py                      ← training loop (AMP, early stopping)
 │   ├── predict_images.py             ← batch inference on image folders
 │   └── demo_webcam.py                ← real-time webcam demo
+├── app.py                            ← Streamlit web interface
 ├── requirements.txt
 └── README.md
 ```
@@ -289,7 +325,15 @@ jupyter notebook notebooks/cr5_evaluation.ipynb
 python src/predict_images.py --model deep_cnn --input data/new_images/
 ```
 
-### 7. Webcam demo
+### 7. Streamlit web app
+
+```bash
+streamlit run app.py
+# Opens at http://localhost:8501
+# Tabs: Upload Image · Capture Photo · Compare All Models
+```
+
+### 8. Webcam demo (terminal)
 
 ```bash
 python src/demo_webcam.py --model deep_cnn
